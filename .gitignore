@@ -991,5 +991,5 @@ healthchecksdb
 
 # Backup folder for Package Reference Convert tool in Visual Studio 2017
 MigrationBackup/
-
+data/
 # End of https://www.gitignore.io/api/vim,tags,emacs,pycharm,eclipse,netbeans,webstorm,jetbrains,visualstudio,visualstudiocode
