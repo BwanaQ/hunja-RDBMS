@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash
 import sys, os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -6,7 +6,20 @@ from rdbms.parser import parse
 from rdbms.executor import Executor
 
 app = Flask(__name__)
+# Required for flash()
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key")
+
 executor = Executor()
+
+def run_sql_and_flash(sql, success_msg=None):
+    """Execute SQL AST and flash error or optional success message."""
+    res = executor.execute(parse(sql))
+    if not res.get("ok"):
+        flash(res.get("error", "Unknown error"), "error")
+        return False
+    if success_msg:
+        flash(success_msg, "success")
+    return True
 
 # Escape helper for all string inputs
 def escape(value):
@@ -39,7 +52,6 @@ def users():
 def add_user():
     # Read existing rows to compute next id
     rows = executor.storage.read_all("users")
-    # Determine next id (assume stored ids are strings or ints)
     max_id = 0
     for r in rows:
         try:
@@ -50,37 +62,32 @@ def add_user():
             continue
     next_id = max_id + 1
 
-    # Escape/sanitize inputs as before
+    # Escape/sanitize inputs
     name = escape(request.form.get("name", ""))
     email = escape(request.form.get("email", ""))
 
     # Build and execute INSERT using the computed id
     sql = f"INSERT INTO users (id, name, email) VALUES ({next_id}, '{name}', '{email}');"
-    result = executor.execute(parse(sql))
-    if not result.get("ok"):
-        # If you want to surface errors to the UI, you can flash result["error"]
-        # For now, just redirect back to users page
-        return redirect(url_for("users"))
+    run_sql_and_flash(sql, success_msg="User created.")
     return redirect(url_for("users"))
-
 
 @app.route("/users/delete/<id>")
 def delete_user(id):
-    executor.execute(parse(f"DELETE FROM users WHERE id={id};"))
+    run_sql_and_flash(f"DELETE FROM users WHERE id={id};", success_msg="User deleted.")
     return redirect(url_for("users"))
 
 @app.route("/users/edit/<id>")
 def edit_user(id):
     rows = executor.storage.read_all("users")
-    user = next((u for u in rows if u["id"] == id), None)
+    user = next((u for u in rows if str(u.get("id")) == str(id)), None)
     return render_template("edit_user.html", user=user)
 
 @app.route("/users/update/<id>", methods=["POST"])
 def update_user(id):
-    name = escape(request.form["name"])
-    email = escape(request.form["email"])
+    name = escape(request.form.get("name", ""))
+    email = escape(request.form.get("email", ""))
     sql = f"UPDATE users SET name='{name}', email='{email}' WHERE id={id};"
-    executor.execute(parse(sql))
+    run_sql_and_flash(sql, success_msg="User updated.")
     return redirect(url_for("users"))
 
 # ---------------- EVENTS ----------------
@@ -109,27 +116,26 @@ def add_event():
 
     # Build and execute INSERT with server-assigned id
     sql = f"INSERT INTO events (id, title, date) VALUES ({next_id}, '{title}', '{date}');"
-    result = executor.execute(parse(sql))
-    # Optionally surface errors to the UI; for now redirect back
+    run_sql_and_flash(sql, success_msg="Event created.")
     return redirect(url_for("events"))
 
 @app.route("/events/delete/<id>")
 def delete_event(id):
-    executor.execute(parse(f"DELETE FROM events WHERE id={id};"))
+    run_sql_and_flash(f"DELETE FROM events WHERE id={id};", success_msg="Event deleted.")
     return redirect(url_for("events"))
 
 @app.route("/events/edit/<id>")
 def edit_event(id):
     rows = executor.storage.read_all("events")
-    event = next((e for e in rows if e["id"] == id), None)
+    event = next((e for e in rows if str(e.get("id")) == str(id)), None)
     return render_template("edit_event.html", event=event)
 
 @app.route("/events/update/<id>", methods=["POST"])
 def update_event(id):
-    title = escape(request.form["title"])
-    date = escape(request.form["date"])
+    title = escape(request.form.get("title", ""))
+    date = escape(request.form.get("date", ""))
     sql = f"UPDATE events SET title='{title}', date='{date}' WHERE id={id};"
-    executor.execute(parse(sql))
+    run_sql_and_flash(sql, success_msg="Event updated.")
     return redirect(url_for("events"))
 
 # ---------------- TICKETS ----------------
@@ -165,19 +171,22 @@ def add_ticket():
         event_id_int = int(event_id)
         buyer_id_int = int(buyer_id)
     except Exception:
+        flash("Invalid event or buyer selection.", "error")
         return redirect(url_for("tickets"))
 
+    # By default store buyer_id in buyer_name column (string). If you prefer the buyer's name,
+    # look it up from users and store the name instead.
+    buyer_value = escape(str(buyer_id_int))
+
     # Build and execute INSERT using server-assigned id
-    sql = f"INSERT INTO tickets (id, event_id, buyer_name) VALUES ({next_id}, {event_id_int}, '{escape(str(buyer_id_int))}');"
-    # Note: buyer_name in schema is a TEXT; we store buyer id as buyer_name if you want buyer name instead,
-    # see alternative below to store buyer name label instead of id.
-    executor.execute(parse(sql))
+    sql = f"INSERT INTO tickets (id, event_id, buyer_name) VALUES ({next_id}, {event_id_int}, '{buyer_value}');"
+    run_sql_and_flash(sql, success_msg="Ticket created.")
     return redirect(url_for("tickets"))
 
 # Delete unchanged
 @app.route("/tickets/delete/<id>")
 def delete_ticket(id):
-    executor.execute(parse(f"DELETE FROM tickets WHERE id={id};"))
+    run_sql_and_flash(f"DELETE FROM tickets WHERE id={id};", success_msg="Ticket deleted.")
     return redirect(url_for("tickets"))
 
 # Edit: provide events and users so edit form can show dropdowns with current selection
@@ -199,6 +208,7 @@ def update_ticket(id):
         event_id_int = int(event_id)
         buyer_id_int = int(buyer_id)
     except Exception:
+        flash("Invalid event or buyer selection.", "error")
         return redirect(url_for("tickets"))
 
     # If you want to store buyer name instead of buyer id, look up the user and use their name:
@@ -208,6 +218,9 @@ def update_ticket(id):
     buyer_value = escape(str(buyer_id_int))
 
     sql = f"UPDATE tickets SET event_id={event_id_int}, buyer_name='{buyer_value}' WHERE id={id};"
-    executor.execute(parse(sql))
+    run_sql_and_flash(sql, success_msg="Ticket updated.")
     return redirect(url_for("tickets"))
 
+if __name__ == "__main__":
+    # Run the Flask dev server
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
