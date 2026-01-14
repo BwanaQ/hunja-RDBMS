@@ -1,1 +1,98 @@
-{}
+{
+  "users": {
+    "columns": {
+      "id": {
+        "type": "INTEGER",
+        "primary_key": true,
+        "unique": false
+      },
+      "name": {
+        "type": "TEXT",
+        "primary_key": false,
+        "unique": true
+      },
+      "email": {
+        "type": "TEXT",
+        "primary_key": false,
+        "unique": false
+      }
+    },
+    "table_constraints": []
+  },
+  "events": {
+    "columns": {
+      "id": {
+        "type": "INTEGER",
+        "primary_key": true,
+        "unique": false
+      },
+      "title": {
+        "type": "TEXT",
+        "primary_key": false,
+        "unique": false
+      },
+      "date": {
+        "type": "DATE",
+        "primary_key": false,
+        "unique": false
+      }
+    },
+    "table_constraints": []
+  },
+  "tickets": {
+    "columns": {
+      "id": {
+        "type": "INTEGER",
+        "primary_key": true,
+        "unique": false
+      },
+      "event_id": {
+        "type": "INTEGER",
+        "primary_key": false,
+        "unique": false
+      },
+      "buyer_name": {
+        "type": "TEXT",
+        "primary_key": false,
+        "unique": false
+      }
+    },
+    "table_constraints": [
+      {
+        "type": "unique",
+        "columns": [
+          "event_id",
+          "buyer_name"
+        ]
+      }
+    ]
+  },
+  "orders": {
+    "columns": {
+      "id": {
+        "type": "INTEGER",
+        "primary_key": true,
+        "unique": false
+      },
+      "user_id": {
+        "type": "INTEGER",
+        "primary_key": false,
+        "unique": false
+      },
+      "event_id": {
+        "type": "INTEGER",
+        "primary_key": false,
+        "unique": false
+      }
+    },
+    "table_constraints": [
+      {
+        "type": "unique",
+        "columns": [
+          "user_id",
+          "event_id"
+        ]
+      }
+    ]
+  }
+}

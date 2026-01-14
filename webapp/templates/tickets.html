@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block body %}
+<h2 class="text-xl font-semibold mb-4">Tickets</h2>
+
+<form method="post" action="{{ url_for('add_ticket') }}" class="flex space-x-2 mb-6">
+  <!-- ID removed (server assigns). Dropdowns for event and buyer -->
+  <select name="event_id" required class="border rounded px-2 py-1">
+    <option value="" disabled selected>Select event</option>
+    {% for e in events %}
+      <option value="{{ e['id'] }}">{{ e['title'] }} ({{ e['id'] }})</option>
+    {% endfor %}
+  </select>
+
+  <select name="buyer_id" required class="border rounded px-2 py-1">
+    <option value="" disabled selected>Select buyer</option>
+    {% for u in users %}
+      <option value="{{ u['id'] }}">{{ u['name'] }} ({{ u['id'] }})</option>
+    {% endfor %}
+  </select>
+
+  <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Add</button>
+</form>
+
+<table class="table-auto w-full border-collapse border border-gray-300">
+  <thead>
+    <tr class="bg-gray-200">
+      <th class="border px-4 py-2">ID</th>
+      <th class="border px-4 py-2">Event</th>
+      <th class="border px-4 py-2">Buyer</th>
+      <th class="border px-4 py-2">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tickets %}
+    <tr>
+      <td class="border px-4 py-2">{{ t['id'] }}</td>
+
+      <td class="border px-4 py-2">
+        {# show event title if available, otherwise raw id #}
+        {% set event_title = t['event_id'] %}
+        {% for e in events %}
+          {% if e['id']|string == t['event_id']|string %}
+            {% set event_title = e['title'] %}
+          {% endif %}
+        {% endfor %}
+        {{ event_title }}
+      </td>
+
+      <td class="border px-4 py-2">
+        {# show buyer name if stored as id; if buyer_name already contains a name, show it #}
+        {% set buyer_display = t['buyer_name'] %}
+        {% for u in users %}
+          {% if u['id']|string == t['buyer_name']|string %}
+            {% set buyer_display = u['name'] %}
+          {% endif %}
+        {% endfor %}
+        {{ buyer_display }}
+      </td>
+
+      <td class="border px-4 py-2">
+        <a href="{{ url_for('edit_ticket', id=t['id']) }}" class="text-green-600 hover:underline">Edit</a>
+        <a href="{{ url_for('delete_ticket', id=t['id']) }}" class="text-red-600 hover:underline ml-3">Delete</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block body %}
+<h2 class="text-xl font-semibold mb-4">Edit User</h2>
+<form method="post" action="{{ url_for('update_user', id=user['id']) }}" class="space-y-4">
+  <div>
+    <label class="block">Name</label>
+    <input name="name" value="{{ user['name'] }}" class="border rounded px-2 py-1 w-full">
+  </div>
+  <div>
+    <label class="block">Email</label>
+    <input name="email" value="{{ user['email'] }}" class="border rounded px-2 py-1 w-full">
+  </div>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Save</button>
+</form>
+{% endblock %}

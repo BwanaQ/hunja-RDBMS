@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block body %}
+<h2 class="text-xl font-semibold mb-4">Edit Event</h2>
+<form method="post" action="{{ url_for('update_event', id=event['id']) }}" class="space-y-4">
+  <div>
+    <label class="block">Title</label>
+    <input name="title" value="{{ event['title'] }}" class="border rounded px-2 py-1 w-full">
+  </div>
+  <div>
+    <label class="block">Date</label>
+    <input name="date" value="{{ event['date'] }}" class="border rounded px-2 py-1 w-full">
+  </div>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Save</button>
+</form>
+{% endblock %}

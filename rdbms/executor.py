@@ -1,81 +1,94 @@
-# rdbms/executor.py
 import os
-import json
 import re
+import json
+import logging
 
-from rdbms.catalog import Catalog
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.DEBUG)
+
+# Ensure these are imported from your project
 from rdbms.storage import Storage
-from rdbms.index import Index  # simple hash index per column
+from rdbms.catalog import Catalog
+from rdbms.index import Index
+# from config import DATA_DIR
 
-DATA_DIR = "data"
+# If DATA_DIR isn't defined elsewhere, set a default
+DATA_DIR = os.environ.get("MINIRDBMS_DATA_DIR", ".")
 
 
 class Executor:
     def __init__(self):
         self.catalog = Catalog()
         self.storage = Storage()
+        self._dispatch = {
+            "create_table": self._create_table,
+            "insert": self._insert,
+            "select": self._select,
+            "select_join": self._select_join,
+            "update": self._update,
+            "delete": self._delete,
+        }
 
     def execute(self, ast):
+        if not isinstance(ast, dict) or "action" not in ast:
+            return {"ok": False, "error": "Invalid AST: missing 'action'"}
+        action = ast["action"]
+        handler = self._dispatch.get(action)
+        if handler is None:
+            return {"ok": False, "error": f"Unknown action: {action}"}
         try:
-            action = ast["action"]
-
-            if action == "create_table":
-                self._create_table(ast)
-
-            elif action == "insert":
-                self._insert(ast)
-
-            elif action == "select":
-                self._select(ast)
-
-            elif action == "update":
-                self._update(ast)
-
-            elif action == "delete":
-                self._delete(ast)
-
-            else:
-                print("Unknown command.")
-
+            result = handler(ast)
+            return {"ok": True, "result": result}
         except ValueError as ve:
-            print(f"Error: {ve}")
-        except Exception as e:
-            print(f"Unexpected error: {e}")
+            logger.warning("Value error: %s", ve)
+            return {"ok": False, "error": str(ve)}
+        except Exception:
+            logger.exception("Unexpected error executing AST")
+            return {"ok": False, "error": "internal error"}
 
-    # -----------------------------
-    # Actions
-    # -----------------------------
-
+    # -------------------------
+    # DDL / DML handlers
+    # -------------------------
     def _create_table(self, ast):
         table = ast["table"]
         columns = ast["columns"]
-        self.catalog.create_table(table, {"columns": columns})
-        print(f"Table '{table}' created with columns: {list(columns.keys())}")
+        table_constraints = ast.get("table_constraints", [])
+        self.catalog.create_table(table, {
+            "columns": columns,
+            "table_constraints": table_constraints
+        })
+        logger.info("Table '%s' created with columns: %s", table, list(columns.keys()))
+        return None
 
     def _insert(self, ast):
         table = ast["table"]
-        row = ast["row"]
+        row = ast["row"]  # parser returns unquoted raw strings or numeric strings
         schema = self.catalog.get_schema(table)
         if not schema:
             raise ValueError(f"Table '{table}' does not exist")
 
-        rows = self.storage.read_all(table)
+        rows = self.storage.read_all(table)  # snapshot before insert
 
-        # Constraints
+        # Constraints and types
         self._enforce_primary_key(schema, rows, row, table)
         self._enforce_unique(schema, rows, row, table)
+        self._enforce_composite_unique(schema, rows, row, table)
         self._enforce_types(schema, row)
 
         # Persist
+        new_row_index = len(rows)
         self.storage.insert(table, row)
-        print(f"Row inserted into '{table}': {row}")
 
-        # Index maintenance: add for PK and UNIQUE columns
-        row_id = len(rows)  # new row index after append
+        logger.debug("Inserted row into %s: %s", table, json.dumps(row))
+
+        # Index maintenance
         for col, meta in schema["columns"].items():
             if meta.get("primary_key") or meta.get("unique"):
                 idx = Index(table, col)
-                idx.add(row.get(col), str(row_id))
+                idx.add(row.get(col), str(new_row_index))
+
+        return {"inserted_row_index": new_row_index, "row": row}
 
     def _select(self, ast):
         table = ast["table"]
@@ -85,11 +98,8 @@ class Executor:
             raise ValueError(f"Table '{table}' does not exist")
 
         rows = self.storage.read_all(table)
-
         if not condition:
-            for r in rows:
-                print(r)
-            return
+            return rows
 
         col, val = condition["column"], condition["value"]
         if col not in schema["columns"]:
@@ -97,28 +107,86 @@ class Executor:
 
         # Try index first
         idx_path = os.path.join(DATA_DIR, f"{table}_{col}.idx")
+        matched_rows = []
         if os.path.exists(idx_path):
             idx = Index(table, col)
             row_ids = idx.lookup(val)
             if not row_ids:
-                print(f"No matching rows found in '{table}'")
-                return
+                return []
             for i, r in enumerate(rows):
                 if str(i) in row_ids:
-                    print(r)
+                    matched_rows.append(r)
         else:
-            # Fallback: full scan
-            matched = False
             for r in rows:
-                if str(r.get(col)) == val:
-                    print(r)
-                    matched = True
-            if not matched:
-                print(f"No matching rows found in '{table}'")
+                # exact equality on stored value (both are raw strings)
+                if r.get(col) == val:
+                    matched_rows.append(r)
+        return matched_rows
+
+    def _select_join(self, ast):
+        left_table = ast["left_table"]
+        right_table = ast["right_table"]
+        on_left = ast["on"]["left"]
+        on_right = ast["on"]["right"]
+        select_cols = ast["columns"]
+        condition = ast.get("condition")
+
+        left_schema = self.catalog.get_schema(left_table)
+        right_schema = self.catalog.get_schema(right_table)
+        if not left_schema:
+            raise ValueError(f"Table '{left_table}' does not exist")
+        if not right_schema:
+            raise ValueError(f"Table '{right_table}' does not exist")
+
+        try:
+            lt, lcol = on_left.split(".")
+            rt, rcol = on_right.split(".")
+        except ValueError:
+            raise ValueError("JOIN ON must be of form left.col = right.col")
+
+        if lt != left_table or rt != right_table:
+            raise ValueError("JOIN ON table qualifiers must match FROM and JOIN tables")
+
+        if lcol not in left_schema["columns"]:
+            raise ValueError(f"Column '{lcol}' does not exist in table '{left_table}'")
+        if rcol not in right_schema["columns"]:
+            raise ValueError(f"Column '{rcol}' does not exist in table '{right_table}'")
+
+        left_rows = self.storage.read_all(left_table)
+        right_rows = self.storage.read_all(right_table)
+
+        results = []
+        for lrow in left_rows:
+            lv = lrow.get(lcol)
+            for rrow in right_rows:
+                rv = rrow.get(rcol)
+                if lv == rv:
+                    combined = {}
+                    for col in select_cols:
+                        if "." not in col:
+                            raise ValueError(f"Selected column '{col}' must be qualified as table.column")
+                        tname, cname = col.split(".")
+                        if tname == left_table:
+                            combined[col] = lrow.get(cname)
+                        elif tname == right_table:
+                            combined[col] = rrow.get(cname)
+                        else:
+                            raise ValueError(f"Unknown table qualifier '{tname}' in column '{col}'")
+                    if condition:
+                        cond_col = condition["column"]
+                        cond_val = condition["value"]
+                        if "." in cond_col:
+                            if combined.get(cond_col) != cond_val:
+                                continue
+                        else:
+                            if lrow.get(cond_col) != cond_val and rrow.get(cond_col) != cond_val:
+                                continue
+                    results.append(combined)
+        return results
 
     def _update(self, ast):
         table = ast["table"]
-        set_clause = ast["set"]
+        set_clause = ast["set"]      # dict of column -> new unquoted value
         condition = ast["condition"]
 
         schema = self.catalog.get_schema(table)
@@ -130,13 +198,19 @@ class Executor:
         new_rows = []
 
         for i, r in enumerate(rows):
-            if str(r.get(condition["column"])) == condition["value"]:
-                # Prepare candidate row and type-check
+            if r.get(condition["column"]) == condition["value"]:
                 candidate = r.copy()
-                candidate.update(set_clause)
-                self._enforce_types(schema, candidate)
+                # apply all assignments from set_clause (values are raw strings)
+                for k, v in set_clause.items():
+                    candidate[k] = v
 
-                # Incremental index maintenance for PK/UNIQUE columns
+                # Constraints against candidate (skip comparing to itself by index)
+                self._enforce_types(schema, candidate)
+                self._enforce_primary_key(schema, rows, candidate, table, skip_index=i)
+                self._enforce_unique(schema, rows, candidate, table, skip_index=i)
+                self._enforce_composite_unique(schema, rows, candidate, table, skip_index=i)
+
+                # Index maintenance: update only if value changed
                 for col, meta in schema["columns"].items():
                     if meta.get("primary_key") or meta.get("unique"):
                         old_val = r.get(col)
@@ -150,16 +224,17 @@ class Executor:
                 updated = True
             new_rows.append(r)
 
-        # Rewrite file
+        # Atomically rewrite table file
         file = self.storage._table_file(table)
-        with open(file, "w") as f:
+        tmp = file + ".tmp"
+        with open(tmp, "w") as f:
             for row in new_rows:
                 f.write(json.dumps(row) + "\n")
+        os.replace(tmp, file)
 
         if updated:
-            print(f"Rows in '{table}' updated where {condition['column']}={condition['value']}")
-        else:
-            print(f"No matching rows found in '{table}'")
+            return {"updated": True, "where": condition}
+        return {"updated": False, "where": condition}
 
     def _delete(self, ast):
         table = ast["table"]
@@ -174,50 +249,59 @@ class Executor:
         deleted_count = 0
 
         for i, r in enumerate(rows):
-            if str(r.get(condition["column"])) == condition["value"]:
-                # Incremental index maintenance for PK/UNIQUE columns
+            if r.get(condition["column"]) == condition["value"]:
                 for col, meta in schema["columns"].items():
                     if meta.get("primary_key") or meta.get("unique"):
                         idx = Index(table, col)
                         idx.remove(r.get(col), str(i))
                 deleted_count += 1
-                continue  # skip (deleted)
+                continue
             new_rows.append(r)
 
-        # Rewrite file
         file = self.storage._table_file(table)
-        with open(file, "w") as f:
+        tmp = file + ".tmp"
+        with open(tmp, "w") as f:
             for row in new_rows:
                 f.write(json.dumps(row) + "\n")
+        os.replace(tmp, file)
 
-        # Note: row IDs shift after deletion; index now contains stale IDs.
-        # To keep IDs accurate, we remap them once after deletions.
-        # Lightweight remap: rebuild only if any deletions occurred.
         if deleted_count > 0:
             self._remap_index_ids_after_compaction(table, schema, new_rows)
-
-        if deleted_count > 0:
-            print(f"Deleted {deleted_count} row(s) from '{table}' where {condition['column']}={condition['value']}")
-        else:
-            print(f"No matching rows found in '{table}'")
+            return {"deleted": deleted_count}
+        return {"deleted": 0}
 
     # -----------------------------
     # Helpers: constraints & types
     # -----------------------------
-
-    def _enforce_primary_key(self, schema, rows, row, table):
+    def _enforce_primary_key(self, schema, rows, row, table, skip_index=None):
         pk_cols = [c for c, meta in schema["columns"].items() if meta.get("primary_key")]
         for pk in pk_cols:
-            for r in rows:
-                if str(r.get(pk)) == str(row.get(pk)):
+            for i, r in enumerate(rows):
+                if skip_index is not None and i == skip_index:
+                    continue
+                if r.get(pk) == row.get(pk):
                     raise ValueError(f"Duplicate primary key '{pk}={row.get(pk)}' in table '{table}'")
 
-    def _enforce_unique(self, schema, rows, row, table):
+    def _enforce_unique(self, schema, rows, row, table, skip_index=None):
         unique_cols = [c for c, meta in schema["columns"].items() if meta.get("unique")]
         for uc in unique_cols:
-            for r in rows:
-                if str(r.get(uc)) == str(row.get(uc)):
+            for i, r in enumerate(rows):
+                if skip_index is not None and i == skip_index:
+                    continue
+                if r.get(uc) == row.get(uc):
                     raise ValueError(f"Duplicate unique value '{uc}={row.get(uc)}' in table '{table}'")
+
+    def _enforce_composite_unique(self, schema, rows, row, table, skip_index=None):
+        for c in schema.get("table_constraints", []):
+            if c.get("type") == "unique":
+                cols = c.get("columns", [])
+                for i, r in enumerate(rows):
+                    if skip_index is not None and i == skip_index:
+                        continue
+                    if all(r.get(col) == row.get(col) for col in cols):
+                        raise ValueError(
+                            f"Duplicate composite unique ({', '.join(cols)}) in table '{table}'"
+                        )
 
     def _enforce_types(self, schema, row):
         for col, meta in schema["columns"].items():
@@ -232,7 +316,7 @@ class Executor:
             elif col_type == "FLOAT":
                 try:
                     float(val)
-                except ValueError:
+                except Exception:
                     raise ValueError(f"Column '{col}' expects FLOAT, got '{val}'")
             elif col_type == "BOOLEAN":
                 if str(val).upper() not in ["TRUE", "FALSE"]:
@@ -245,9 +329,7 @@ class Executor:
     # -----------------------------
     # Helpers: index maintenance
     # -----------------------------
-
     def _rebuild_indexes(self, table, schema):
-        # Only rebuild PK and UNIQUE indexes for simplicity
         indexed_cols = [c for c, m in schema["columns"].items() if m.get("primary_key") or m.get("unique")]
         if not indexed_cols:
             return
@@ -264,19 +346,13 @@ class Executor:
                 idx.add(r.get(col), str(i))
 
     def _remap_index_ids_after_compaction(self, table, schema, rows):
-        """
-        After deletions, row IDs shift. This remaps index entries to new row IDs.
-        It’s a targeted rebuild using the in-memory 'rows' just written.
-        """
         indexed_cols = [c for c, m in schema["columns"].items() if m.get("primary_key") or m.get("unique")]
         if not indexed_cols:
             return
 
         for col in indexed_cols:
             idx = Index(table, col)
-            # Reset index file
             with open(idx.file, "w") as f:
                 json.dump({}, f)
-            # Rebuild mappings with new positions
             for i, r in enumerate(rows):
                 idx.add(r.get(col), str(i))

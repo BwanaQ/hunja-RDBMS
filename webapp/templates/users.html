@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block body %}
+<h2 class="text-xl font-semibold mb-4">Users</h2>
+<form method="post" action="{{ url_for('add_user') }}" class="flex space-x-2 mb-6">
+  <!-- <input name="id" placeholder="ID" class="border rounded px-2 py-1"> -->
+  <input name="name" placeholder="Name" class="border rounded px-2 py-1">
+  <input name="email" placeholder="Email" class="border rounded px-2 py-1">
+  <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Add</button>
+</form>
+<table class="table-auto w-full border-collapse border border-gray-300">
+  <thead><tr class="bg-gray-200"><th class="border px-4 py-2">ID</th><th class="border px-4 py-2">Name</th><th class="border px-4 py-2">Email</th><th class="border px-4 py-2">Actions</th></tr></thead>
+  <tbody>
+    {% for u in users %}
+    <tr>
+      <td class="border px-4 py-2">{{ u['id'] }}</td>
+      <td class="border px-4 py-2">{{ u['name'] }}</td>
+      <td class="border px-4 py-2">{{ u['email'] }}</td>
+      <td class="border px-4 py-2">
+        <a href="{{ url_for('edit_user', id=u['id']) }}" class="text-green-600 hover:underline">Edit</a>
+        <a href="{{ url_for('delete_user', id=u['id']) }}" class="text-red-600 hover:underline">Delete</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

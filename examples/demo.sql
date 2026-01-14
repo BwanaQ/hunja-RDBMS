@@ -1,51 +1,39 @@
--- Demo script for MiniRDBMS
--- Showcases table creation, CRUD, indexing, and joins
+-- Schema setup
+CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT UNIQUE, email TEXT);
+CREATE TABLE events (id INTEGER PRIMARY KEY, title TEXT, date DATE);
+CREATE TABLE tickets (id INTEGER PRIMARY KEY, event_id INTEGER, buyer_name TEXT, UNIQUE(event_id, buyer_name));
+CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, event_id INTEGER, UNIQUE(user_id, event_id));
 
--- 1. Create tables
-CREATE TABLE events (
-  id INTEGER PRIMARY KEY,
-  name TEXT UNIQUE,
-  date DATE
-);
+-- Seed users
+INSERT INTO users (id, name, email) VALUES (1, 'Alice', 'alice@example.com');
+INSERT INTO users (id, name, email) VALUES (2, 'Bob', 'bob@example.com');
 
-CREATE TABLE tickets (
-  id INTEGER PRIMARY KEY,
-  event_id INTEGER,
-  buyer_name TEXT,
-  UNIQUE(event_id, buyer_name)
-);
+-- Seed events
+INSERT INTO events (id, title, date) VALUES (100, 'Tech Meetup', '2026-01-20');
+INSERT INTO events (id, title, date) VALUES (101, 'Music Festival', '2026-02-15');
 
--- 2. Insert sample data
-INSERT INTO events (id, name, date)
-VALUES (1, 'Kitui Tech Meetup', '2026-01-20');
+-- Tickets with composite UNIQUE
+INSERT INTO tickets (id, event_id, buyer_name) VALUES (1, 100, 'Alice');
+INSERT INTO tickets (id, event_id, buyer_name) VALUES (2, 100, 'Bob');
+INSERT INTO tickets (id, event_id, buyer_name) VALUES (3, 101, 'Alice');
+INSERT INTO tickets (id, event_id, buyer_name) VALUES (4, 100, 'Alice'); -- should fail
 
-INSERT INTO events (id, name, date)
-VALUES (2, 'Nairobi Dev Night', '2026-02-05');
+-- Updates
+UPDATE tickets SET buyer_name='Charlie' WHERE id=2; -- valid
+UPDATE tickets SET event_id=100 WHERE id=3; -- should fail
 
-INSERT INTO tickets (id, event_id, buyer_name)
-VALUES (101, 1, 'Alice');
+-- Delete
+DELETE FROM tickets WHERE id=1;
 
-INSERT INTO tickets (id, event_id, buyer_name)
-VALUES (102, 1, 'Bob');
+-- Orders for join demo
+INSERT INTO orders (id, user_id, event_id) VALUES (1, 1, 100);
+INSERT INTO orders (id, user_id, event_id) VALUES (2, 2, 101);
 
-INSERT INTO tickets (id, event_id, buyer_name)
-VALUES (103, 2, 'Charlie');
-
--- 3. Basic queries
+-- Queries
+SELECT * FROM users;
 SELECT * FROM events;
+SELECT * FROM tickets;
 
-SELECT * FROM tickets WHERE event_id = 1;
-
--- 4. Update and delete
-UPDATE events SET name = 'Kitui Developer Meetup' WHERE id = 1;
-
-DELETE FROM tickets WHERE buyer_name = 'Bob';
-
--- 5. Index creation
-CREATE INDEX idx_events_date ON events(date);
-
--- 6. Join query
-SELECT tickets.id, tickets.buyer_name, events.name, events.date
-FROM tickets
-JOIN events ON tickets.event_id = events.id
-WHERE events.date = '2026-01-20';
+-- Single join demos
+SELECT users.name, orders.event_id FROM users INNER JOIN orders ON users.id = orders.user_id;
+SELECT events.title, orders.user_id FROM events INNER JOIN orders ON events.id = orders.event_id;

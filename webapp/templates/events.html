@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block body %}
+<h2 class="text-xl font-semibold mb-4">Events</h2>
+<form method="post" action="{{ url_for('add_event') }}" class="flex space-x-2 mb-6">
+  <!-- <input name="id" placeholder="ID" class="border rounded px-2 py-1"> -->
+  <input name="title" placeholder="Title" class="border rounded px-2 py-1">
+  <input name="date" placeholder="YYYY-MM-DD" class="border rounded px-2 py-1">
+  <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Add</button>
+</form>
+<table class="table-auto w-full border-collapse border border-gray-300">
+  <thead><tr class="bg-gray-200"><th class="border px-4 py-2">ID</th><th class="border px-4 py-2">Title</th><th class="border px-4 py-2">Date</th><th class="border px-4 py-2">Actions</th></tr></thead>
+  <tbody>
+    {% for e in events %}
+    <tr>
+      <td class="border px-4 py-2">{{ e['id'] }}</td>
+      <td class="border px-4 py-2">{{ e['title'] }}</td>
+      <td class="border px-4 py-2">{{ e['date'] }}</td>
+      <td class="border px-4 py-2">
+        <a href="{{ url_for('edit_event', id=e['id']) }}" class="text-green-600 hover:underline">Edit</a>
+        <a href="{{ url_for('delete_event', id=e['id']) }}" class="text-red-600 hover:underline">Delete</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
