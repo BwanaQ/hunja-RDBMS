@@ -1,5 +1,3 @@
-Here’s a solid starting point for your README.md. It’s structured to highlight the challenge requirements, what you’ve built, how to run it, and the tradeoffs you made. You can drop this into your repo and tweak details as needed:
-
 # MiniRDBMS + Demo Web App
 
 ## Overview
@@ -53,7 +51,7 @@ pip install -r requirements.txt
 ```bash
 python -m rdbms.repl
 ```
-### Example commands:
+## Example commands:
 
 ```bash
 
