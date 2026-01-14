@@ -14,6 +14,9 @@
           <li><a href="{{ url_for('users') }}" class="text-blue-600 hover:underline">Users</a></li>
           <li><a href="{{ url_for('events') }}" class="text-blue-600 hover:underline">Events</a></li>
           <li><a href="{{ url_for('tickets') }}" class="text-blue-600 hover:underline">Tickets</a></li>
+          <li><a href="{{ url_for('orders') }}" class="text-blue-600 hover:underline">Orders
+            
+          </a></li>
         </ul>
       </nav>
         {% with messages = get_flashed_messages(with_categories=true) %}

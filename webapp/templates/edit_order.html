@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block body %}
+<h2 class="text-xl font-semibold mb-4">Edit Order</h2>
+
+<form method="post" action="{{ url_for('update_order', id=order['id']) }}" class="space-y-4">
+  <div>
+    <label class="block">User</label>
+    <select name="user_id" required class="border rounded px-2 py-1 w-full">
+      {% for u in users %}
+        <option value="{{ u['id'] }}" {% if u['id']|string == order['user_id']|string %}selected{% endif %}>
+          {{ u['name'] }} ({{ u['id'] }})
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label class="block">Event</label>
+    <select name="event_id" required class="border rounded px-2 py-1 w-full">
+      {% for e in events %}
+        <option value="{{ e['id'] }}" {% if e['id']|string == order['event_id']|string %}selected{% endif %}>
+          {{ e['title'] }} ({{ e['id'] }})
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Save</button>
+</form>
+{% endblock %}

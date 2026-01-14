@@ -33,6 +33,8 @@ def init_schema():
         executor.execute(parse("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT UNIQUE, email TEXT);"))
         executor.execute(parse("CREATE TABLE events (id INTEGER PRIMARY KEY, title TEXT, date DATE);"))
         executor.execute(parse("CREATE TABLE tickets (id INTEGER PRIMARY KEY, event_id INTEGER, buyer_name TEXT, UNIQUE(event_id, buyer_name));"))
+        executor.execute(parse("CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, event_id INTEGER, UNIQUE(user_id, event_id));"))
+
     except Exception:
         pass
 
@@ -220,6 +222,93 @@ def update_ticket(id):
     sql = f"UPDATE tickets SET event_id={event_id_int}, buyer_name='{buyer_value}' WHERE id={id};"
     run_sql_and_flash(sql, success_msg="Ticket updated.")
     return redirect(url_for("tickets"))
+
+# Orders listing: include users and events for dropdowns and joined display
+@app.route("/orders")
+def orders():
+    orders = executor.storage.read_all("orders")
+    events = executor.storage.read_all("events")
+    users = executor.storage.read_all("users")
+    return render_template("orders.html", orders=orders, events=events, users=users)
+
+# Add order: compute next id server-side and validate foreign keys
+@app.route("/orders/add", methods=["POST"])
+def add_order():
+    # compute next id
+    rows = executor.storage.read_all("orders")
+    max_id = 0
+    for r in rows:
+        try:
+            rid = int(r.get("id"))
+            if rid > max_id:
+                max_id = rid
+        except Exception:
+            continue
+    next_id = max_id + 1
+
+    user_id = request.form.get("user_id")
+    event_id = request.form.get("event_id")
+    try:
+        user_id_int = int(user_id)
+        event_id_int = int(event_id)
+    except Exception:
+        flash("Invalid user or event selection.", "error")
+        return redirect(url_for("orders"))
+
+    # FK existence checks
+    users = executor.storage.read_all("users")
+    events = executor.storage.read_all("events")
+    if not any(str(u.get("id")) == str(user_id_int) for u in users):
+        flash("Selected user does not exist.", "error")
+        return redirect(url_for("orders"))
+    if not any(str(e.get("id")) == str(event_id_int) for e in events):
+        flash("Selected event does not exist.", "error")
+        return redirect(url_for("orders"))
+
+    sql = f"INSERT INTO orders (id, user_id, event_id) VALUES ({next_id}, {user_id_int}, {event_id_int});"
+    run_sql_and_flash(sql, success_msg="Order created.")
+    return redirect(url_for("orders"))
+
+# Delete order
+@app.route("/orders/delete/<id>")
+def delete_order(id):
+    run_sql_and_flash(f"DELETE FROM orders WHERE id={id};", success_msg="Order deleted.")
+    return redirect(url_for("orders"))
+
+# Edit order: provide events and users for dropdowns
+@app.route("/orders/edit/<id>")
+def edit_order(id):
+    rows = executor.storage.read_all("orders")
+    order = next((o for o in rows if str(o.get("id")) == str(id)), None)
+    events = executor.storage.read_all("events")
+    users = executor.storage.read_all("users")
+    return render_template("edit_order.html", order=order, events=events, users=users)
+
+# Update order
+@app.route("/orders/update/<id>", methods=["POST"])
+def update_order(id):
+    user_id = request.form.get("user_id")
+    event_id = request.form.get("event_id")
+    try:
+        user_id_int = int(user_id)
+        event_id_int = int(event_id)
+    except Exception:
+        flash("Invalid user or event selection.", "error")
+        return redirect(url_for("orders"))
+
+    # Optional FK checks as above
+    users = executor.storage.read_all("users")
+    events = executor.storage.read_all("events")
+    if not any(str(u.get("id")) == str(user_id_int) for u in users):
+        flash("Selected user does not exist.", "error")
+        return redirect(url_for("orders"))
+    if not any(str(e.get("id")) == str(event_id_int) for e in events):
+        flash("Selected event does not exist.", "error")
+        return redirect(url_for("orders"))
+
+    sql = f"UPDATE orders SET user_id={user_id_int}, event_id={event_id_int} WHERE id={id};"
+    run_sql_and_flash(sql, success_msg="Order updated.")
+    return redirect(url_for("orders"))
 
 if __name__ == "__main__":
     # Run the Flask dev server

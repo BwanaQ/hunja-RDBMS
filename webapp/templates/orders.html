@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block body %}
+<h2 class="text-xl font-semibold mb-4">Orders</h2>
+
+<form method="post" action="{{ url_for('add_order') }}" class="flex space-x-2 mb-6">
+  <!-- User dropdown -->
+  <select name="user_id" required class="border rounded px-2 py-1">
+    <option value="" disabled selected>Select user</option>
+    {% for u in users %}
+      <option value="{{ u['id'] }}">{{ u['name'] }} ({{ u['id'] }})</option>
+    {% endfor %}
+  </select>
+
+  <!-- Event dropdown -->
+  <select name="event_id" required class="border rounded px-2 py-1">
+    <option value="" disabled selected>Select event</option>
+    {% for e in events %}
+      <option value="{{ e['id'] }}">{{ e['title'] }} ({{ e['id'] }})</option>
+    {% endfor %}
+  </select>
+
+  <button type="submit" class="bg-blue-600 text-white px-4 py-1 rounded">Add</button>
+</form>
+
+<table class="table-auto w-full border-collapse border border-gray-300">
+  <thead>
+    <tr class="bg-gray-200">
+      <th class="border px-4 py-2">ID</th>
+      <th class="border px-4 py-2">User</th>
+      <th class="border px-4 py-2">Event</th>
+      <th class="border px-4 py-2">Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for o in orders %}
+    <tr>
+      <td class="border px-4 py-2">{{ o['id'] }}</td>
+
+      <td class="border px-4 py-2">
+        {% set user_display = o['user_id'] %}
+        {% for u in users %}
+          {% if u['id']|string == o['user_id']|string %}
+            {% set user_display = u['name'] %}
+          {% endif %}
+        {% endfor %}
+        {{ user_display }}
+      </td>
+
+      <td class="border px-4 py-2">
+        {% set event_display = o['event_id'] %}
+        {% for e in events %}
+          {% if e['id']|string == o['event_id']|string %}
+            {% set event_display = e['title'] %}
+          {% endif %}
+        {% endfor %}
+        {{ event_display }}
+      </td>
+
+      <td class="border px-4 py-2">
+        <a href="{{ url_for('edit_order', id=o['id']) }}" class="text-green-600 hover:underline">Edit</a>
+        <a href="{{ url_for('delete_order', id=o['id']) }}" class="text-red-600 hover:underline ml-3">Delete</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}
