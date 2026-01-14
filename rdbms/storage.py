@@ -23,3 +23,9 @@ class Storage:
             return []
         with open(file, "r") as f:
             return [json.loads(line) for line in f]
+    
+    def drop_table(self, table):
+        """Remove the table's data file if it exists."""
+        file = self._table_file(table)
+        if os.path.exists(file):
+            os.remove(file)

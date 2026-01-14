@@ -293,14 +293,14 @@ class Executor:
         return {"dropped": table}
 
 
-    def drop_all_tables(self):
-        schema = self.catalog.list_tables()
-        for table in schema:
-            try:
-                self._drop_table({"table": table})
-            except Exception:
-                pass
-        return {"dropped_all": True}
+def drop_all_tables(self):
+    schema = self.catalog.load()
+    for table in list(schema.keys()):
+        try:
+            self._drop_table({"table": table})
+        except Exception:
+            pass
+    return {"dropped_all": True}
 
 
     # -----------------------------
